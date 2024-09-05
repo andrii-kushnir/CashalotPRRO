@@ -31,6 +31,9 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="Newtonsoft.Json, Version=11.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <HintPath>..\packages\Newtonsoft.Json.11.0.1\lib\net40\Newtonsoft.Json.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
@@ -40,11 +43,26 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Class1.cs" />
-    <Compile Include="Model\Constants.cs" />
-    <Compile Include="Model\RegisterCheck.cs" />
-    <Compile Include="Model\ZRep.cs" />
+    <Compile Include="DataProvider.cs" />
+    <Compile Include="Extension.cs" />
+    <Compile Include="MethodsAPI.cs" />
+    <Compile Include="ModelCashalot\Constants.cs" />
+    <Compile Include="ModelCashalot\RegisterCheck.cs" />
+    <Compile Include="ModelCashalot\ZRep.cs" />
+    <Compile Include="ModelMethods\CertificateInfo.cs" />
+    <Compile Include="ModelMethods\CloseShift.cs" />
+    <Compile Include="ModelMethods\ErrorBase.cs" />
+    <Compile Include="ModelMethods\Objects.cs" />
+    <Compile Include="ModelMethods\OpenShift.cs" />
+    <Compile Include="ModelMethods\RegisterCheck.cs" />
+    <Compile Include="ModelMethods\RequestBase.cs" />
+    <Compile Include="ModelMethods\ServerState.cs" />
+    <Compile Include="ModelMethods\TransactionsRegistrarState.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="RequestData.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

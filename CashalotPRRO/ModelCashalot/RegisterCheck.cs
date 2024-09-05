@@ -9,10 +9,10 @@ namespace CashalotPRRO.Model
     {
         public CHead CHECKHEAD { get; set; }
         public CTotal CHECKTOTAL { get; set; }
-        public CPayRow[] CHECKPAY { get; set; }
-        public CTaxRow[] CHECKTAX { get; set; }
+        public List<CPayRow> CHECKPAY { get; set; }
+        public List<CTaxRow> CHECKTAX { get; set; }
         public CPtks CHECKPTKS { get; set; }
-        public CBodyRow[] CHECKBODY { get; set; }
+        public List<CBodyRow> CHECKBODY { get; set; }
     }
     public class CHead
     {
@@ -106,7 +106,7 @@ namespace CashalotPRRO.Model
         public decimal DISCOUNTSUM { get; set; }
         public decimal PARTPAYSUM { get; set; }
         public string COMMENT { get; set; }
-        public CExciseLabelsRow[] EXCISELABELS { get; set; }
+        public List<CExciseLabelsRow> EXCISELABELS { get; set; }
     }
     public class CPtks
     {
@@ -163,7 +163,7 @@ namespace CashalotPRRO.Model
         public decimal SUM { get; set; }
         public decimal PROVIDED { get; set; }
         public decimal REMAINS { get; set; }
-        public CPaySysRow[] PAYSYS { get; set; }
+        public List<CPaySysRow> PAYSYS { get; set; }
     }
     public class CTotal
     {
