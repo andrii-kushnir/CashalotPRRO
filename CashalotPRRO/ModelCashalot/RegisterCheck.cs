@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -16,7 +18,9 @@ namespace CashalotPRRO.Model
     }
     public class CHead
     {
+        [JsonConverter(typeof(StringEnumConverter))]
         public CheckDocumentType DOCTYPE { get; set; }
+        [JsonConverter(typeof(StringEnumConverter))]
         public CheckDocumentSubType DOCSUBTYPE { get; set; }
         public string UID { get; set; }
         public string TIN { get; set; }

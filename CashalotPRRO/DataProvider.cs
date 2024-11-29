@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 
@@ -40,7 +41,7 @@ namespace CashalotPRRO
         
         public static void SaveErrorToSQL(SqlConnection connection, ErrorBase objectBase)
         {
-            if (objectBase != null && !String.IsNullOrWhiteSpace(objectBase.ErrorCode))
+            if (objectBase != null && !String.IsNullOrWhiteSpace(objectBase.ErrorCode) && objectBase.ErrorCode != "Ok" && objectBase.ErrorMessage != null)
             {
                 var methodName = new StackTrace(1).GetFrame(0).GetMethod().Name;
                 var isConnection = (connection != null);
@@ -84,8 +85,8 @@ namespace CashalotPRRO
                             UNITCD = reader["ovid"] == System.DBNull.Value ? 2009 : Convert.ToInt32(reader["ovid"]),
                             UNITNM = reader["ovCashalot"] == System.DBNull.Value ? "шт" : Convert.ToString(reader["ovCashalot"]),
                             BARCODE = Convert.ToString(reader["barcode"]),
-                            AMOUNT = Convert.ToDecimal(reader["kol"]),
-                            PRICE = Convert.ToDecimal(reader["cena_r"]),
+                            AMOUNT = Convert.ToDecimal(reader["kol"], CultureInfo.InvariantCulture),
+                            PRICE = Convert.ToDecimal(reader["cena_r"], CultureInfo.InvariantCulture),
                             LETTERS = "Н"
                         };
                         bodyRow.COST = bodyRow.AMOUNT * bodyRow.PRICE;

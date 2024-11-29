@@ -19,18 +19,36 @@ namespace CashalotUI
 
         private void button1_Click(object sender, EventArgs e)
         {
-            CashalotPRRO.MethodsAPI.Objects(null, null, null);
+            //var ddd = CashalotPRRO.MethodsAPI.ServerState();
+            //var fff = CashalotPRRO.MethodsAPI.Objects(null, null, null);
+            //var ggg = CashalotPRRO.MethodsAPI.TransactionsRegistrarState(null, null, null, 4001004105);
+            //var hhh = CashalotPRRO.MethodsAPI.OpenShift(null, null, null, 4001004105);
+            //var jjj = CashalotPRRO.MethodsAPI.RegisterCheck(null, null, null, 4001004105, new Guid("076724AF-559A-4A40-A8A8-2A7552207F55"), 0);
+            //var kkk =  CashalotPRRO.MethodsAPI.LastShiftTotals(null, null, null, 4001004105);
+            //var lll = CashalotPRRO.MethodsAPI.RegisterZRep(null, null, null, 4001004105);
+            //var mmm = CashalotPRRO.MethodsAPI.CloseShift(null, null, null, 4001004105);
+        }
 
-            //string base64String = "SGVsbG8gd29ybGQh";
+        private void button2_Click(object sender, EventArgs e)
+        {
+            CashalotPRRO.MethodsAPI.SetupRegistrar(Convert.ToInt64(_tbNumFiscal.Text));
+        }
 
-            //// Decode Base64 string
-            //byte[] bytes = Convert.FromBase64String(base64String);
+        private void textBox1_KeyPress(object sender, KeyPressEventArgs e)
+        {
+            if (!char.IsDigit(e.KeyChar) && !char.IsControl(e.KeyChar))
+            {
+                e.Handled = true;
+            }
+        }
 
-            //// Convert byte array to string
-            //string result = Encoding.UTF8.GetString(bytes);
+        private void button3_Click(object sender, EventArgs e)
+        {
+            var check = CashalotPRRO.MethodsAPI.GetCheck(Convert.ToInt64(_tbNumFiscal.Text), _tbNumCheck.Text);
+            var ddd = check.VisualCheck;
 
-            //// Output the result
-            //MessageBox.Show("Decoded String: " + Convert.ToBase64String(Encoding.UTF8.GetBytes("Hello world!")));
+            //CashalotPRRO.MethodsAPI.GetCheckXml(Convert.ToInt64(_tbNumFiscal.Text), _tbNumCheck.Text, out string result);
+
         }
     }
 }
