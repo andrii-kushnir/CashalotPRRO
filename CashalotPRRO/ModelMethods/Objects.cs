@@ -12,7 +12,7 @@ namespace CashalotPRRO.ModelMethods
 
     public class ObjectsResult : ErrorBase
     {
-        public Taxobject[] TaxObjects { get; set; }
+        public List<Taxobject> TaxObjects { get; set; }
     }
     public class Taxobject
     {
@@ -23,10 +23,10 @@ namespace CashalotPRRO.ModelMethods
         public string Name { get; set; } // Найменування ГО
         public string Address { get; set; } // Адреса ГО
         public string Tin { get; set; } // Код ЄДРПОУ/ДРФО платника податків
-        public object Ipn { get; set; } // Податковий номер платника ПДВ
+        public string Ipn { get; set; } // Податковий номер платника ПДВ
         public string OrgName { get; set; } // Найменування суб’єкта господарювання
         public bool ChiefCashier { get; set; } // Старший касир
-        public Transactionsregistrar[] TransactionsRegistrars { get; set; }
+        public List<Transactionsregistrar> TransactionsRegistrars { get; set; }
     }
     public class Transactionsregistrar
     {

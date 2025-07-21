@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Xml.Serialization;
 
 namespace CashalotPRRO.ModelMethods
 {
@@ -17,12 +18,19 @@ namespace CashalotPRRO.ModelMethods
         public ZRepAutoInfo ZRepAutoInfo { get; set; }
         public string NumFiscal { get; set; }
         public int NumLocal { get; set; }
-        public DateTime OrderDateTime { get; set; }
+        [XmlElement("OrderDateTime")]
+        public string OrderDateTimeString
+        {
+            get { return OrderDateTime.ToString("yyyy-MM-ddTHH:mm:ss"); }
+            set { OrderDateTime = DateTimeOffset.Parse(value); }
+        }
+        [XmlIgnore]
+        public DateTimeOffset OrderDateTime { get; set; }
         public bool Offline { get; set; }
     }
 
     public class ZRepAutoInfo
     {
-#warning доробити цей клас
+
     }
 }

@@ -15,10 +15,10 @@ namespace CashalotPRRO.ModelMethods
     {
         public int ShiftState { get; set; }
         public int ShiftId { get; set; }
-        public object OpenShiftFiscalNum { get; set; }
+        public string OpenShiftFiscalNum { get; set; }
         public bool ZRepPresent { get; set; }
         public bool Testing { get; set; }
-        public object Name { get; set; }
+        public string Name { get; set; }
         public object SubjectKeyId { get; set; }
         public int FirstLocalNum { get; set; }
         public int NextLocalNum { get; set; }

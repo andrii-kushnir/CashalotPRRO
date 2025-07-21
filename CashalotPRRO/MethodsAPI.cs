@@ -3,10 +3,7 @@ using CashalotPRRO.ModelMethods;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Net;
-using System.Text;
 
 namespace CashalotPRRO
 {
@@ -242,19 +239,48 @@ namespace CashalotPRRO
             var result = RequestData.SendPost(baseUrl, json, out string error);
             DataProvider.SaveErrorToSQL(null, error);
             var resultObj = result.Deserialize<LastShiftTotalsResult>(out error);
+            #region Отримання результатів(Х - звіту) як помилка, якщо треба:
+            //DataProvider.SaveErrorToSQL(null, resultObj.ToXml<LastShiftTotalsResult>());
+            //DataProvider.SaveErrorToSQL(null, result);
+            #endregion
             DataProvider.SaveErrorToSQL(null, error);
             DataProvider.SaveErrorToSQL(null, resultObj);
             return resultObj;
         }
 
+        public static decimal CacheInKasa(byte[] cert, byte[] key, string password, long numFiscal)
+        {
+            decimal result = 0;
+            var XRep = LastShiftTotals(cert, key, password, numFiscal);
+            if (XRep.Totals?.ZREPREALIZ?.PAYFORMS?.FirstOrDefault(x => x.PAYFORMCD == 0)?.SUM != null)
+                result += XRep.Totals.ZREPREALIZ.PAYFORMS.FirstOrDefault(x => x.PAYFORMCD == 0).SUM;
+            if (XRep.Totals?.ZREPRETURN?.PAYFORMS?.FirstOrDefault(x => x.PAYFORMCD == 0)?.SUM != null)
+                result -= XRep.Totals.ZREPRETURN.PAYFORMS.FirstOrDefault(x => x.PAYFORMCD == 0).SUM;
+            if (XRep.Totals?.ZREPBODY?.SERVICEINPUT != null)
+                result += XRep.Totals.ZREPBODY.SERVICEINPUT;
+            if (XRep.Totals?.ZREPBODY?.SERVICEOUTPUT != null)
+                result -= XRep.Totals.ZREPBODY.SERVICEOUTPUT;
+            return result;
+        }
+
         public static void LastShiftTotalsXml(byte[] cert, byte[] key, string password, long numFiscal, out string result)
         {
-            result = LastShiftTotals(cert, key, password, numFiscal).ToXml<LastShiftTotalsResult>();
+            var sum = CacheInKasa(cert, key, password, numFiscal);
+            var XRep = new XRepResult { Sum = sum };
+            result = XRep.ToXml<XRepResult>();
+        }
+
+        public static void LastShiftForDrukXml(byte[] cert, byte[] key, string password, long numFiscal, out string result)
+        {
+            var resultObj = new LastShiftForDruk() { NumFiscal = numFiscal};
+            resultObj.lastShiftTotalsResult = LastShiftTotals(cert, key, password, numFiscal);
+            resultObj.taxobject = Objects(cert, key, password).TaxObjects.FirstOrDefault(o => o.TransactionsRegistrars.Any(t => t.NumFiscal == numFiscal));
+            result = JsonConvert.SerializeObject(resultObj);
         }
 
         public static RegisterZRepResult RegisterZRep(byte[] cert, byte[] key, string password, long numFiscal)
         {
-            var request = new LastShiftTotals()
+            var request = new RegisterZRep()
             {
                 UID = Guid.NewGuid(),
                 Certificate = Convert.ToBase64String(cert),
@@ -320,7 +346,195 @@ namespace CashalotPRRO
             result = CloseShift(cert, key, password, numFiscal).ToXml<CloseShiftResult>();
         }
 
-        public static RegisterCheckResult RegisterCheck(byte[] cert, byte[] key, string password, long numFiscal, int checkSubType, Guid nakladnaGuid, int payType)
+        public static RegisterCheckResult RegisterCheck(byte[] cert, byte[] key, string password, long numFiscal, Guid nakladnaGuid, decimal sum, int payType, decimal rounding, decimal discount, int isPDV, string comment, string IssuerName, string AcquireName, string RRN, DateTime TransactionDate, string TerminalID, string PAN, string ApprovalCode)
+        {
+            //var request = new RegisterCheck()
+            //{
+            //    UID = Guid.NewGuid(),
+            //    Certificate = _cert,
+            //    PrivateKey = _key,
+            //    Password = _password,
+            //    NumFiscal = numFiscal
+            //};
+
+            var request = new RegisterCheck()
+            {
+                UID = Guid.NewGuid(),
+                Certificate = Convert.ToBase64String(cert),
+                PrivateKey = Convert.ToBase64String(key),
+                Password = password,
+                NumFiscal = numFiscal
+            };
+
+            if (discount < 0) discount = 0;
+
+            request.Check = new CheckContent()
+            {
+                CHECKHEAD = new CHead()
+                {
+                    DOCTYPE = CheckDocumentType.SaleGoods,
+                    DOCSUBTYPE = CheckDocumentSubType.CheckGoods,
+                    COMMENT = comment
+                },
+                CHECKPTKS = null,
+            };
+
+            //Товари:
+            request.Check.CHECKBODY = DataProvider.GetDataForCheck(nakladnaGuid, isPDV, out int coden);
+            var sumNakl = request.Check.CHECKBODY.Sum(ch => ch.COST);
+
+            //Округлення:
+            var roundingOrig = rounding;
+            if (payType == 0) //готівка
+            {
+                if (sumNakl - discount - Math.Round(sumNakl - discount, 1, MidpointRounding.AwayFromZero) != 0)
+                    rounding = sumNakl - discount - Math.Round(sumNakl - discount, 1, MidpointRounding.AwayFromZero);
+                else
+                    rounding = 0;
+            }
+            else //не готівка
+                rounding = 0;
+            if (roundingOrig != rounding)
+                DataProvider.SaveErrorToSQL(null, $"Увага! Округлення в накладній не вірне. Моє округлення = {rounding}. Накладна - {coden}");
+
+            if (sumNakl - rounding - discount > sum)
+                DataProvider.SaveErrorToSQL(null, $"Увага! Сума накладнлої більша за суму оплати. Накладна - {coden}");
+
+            if (discount != 0)
+            {
+                var discountNow = discount;
+                foreach ( var tovar in request.Check.CHECKBODY.OrderByDescending(t => t.COST).ToList())
+                {
+                    tovar.DISCOUNTTYPE = 0;
+                    if (tovar.COST >= discountNow)
+                    {
+                        tovar.DISCOUNTSUM = discountNow;
+                        discountNow = 0;
+                        break;
+                    }
+                    else
+                    {
+                        tovar.DISCOUNTSUM = tovar.COST;
+                        discountNow = discountNow - tovar.COST;
+                    }
+                }
+                DataProvider.UpdateCheckDiscount(nakladnaGuid, request.Check.CHECKBODY);
+            }
+
+            //Підсумки:
+            request.Check.CHECKTOTAL = new CTotal() { 
+                SUM = sumNakl - rounding - discount, 
+                RNDSUM = rounding, 
+                NORNDSUM = sumNakl 
+            };
+            if (discount != 0)
+            {
+                request.Check.CHECKTOTAL.DISCOUNTSUM = discount;
+                request.Check.CHECKTOTAL.NORNDSUM = 0;
+            }
+
+            //Податки:
+            if (isPDV == 0)
+                request.Check.CHECKTAX = new List<CTaxRow>() { new CTaxRow() {
+                    TYPE = 0,
+                    NAME = "ПДВ",
+                    LETTER = "Н",
+                    PRC = 0,
+                    TURNOVER = sumNakl,
+                    SOURCESUM = sumNakl - discount,
+                    SUM = 0
+                } };
+            else
+                request.Check.CHECKTAX = new List<CTaxRow>() { new CTaxRow() {
+                    TYPE = 0,
+                    NAME = "ПДВ",
+                    LETTER = "А",
+                    PRC = 20,
+                    TURNOVER = sumNakl,
+                    SOURCESUM = sumNakl - discount,
+                    SUM = Math.Round((sumNakl - discount) * 20 / 120, 2, MidpointRounding.AwayFromZero)
+                } };
+
+            //Оплата:
+            var opl = DataProvider.PayType.FirstOrDefault(o => o.Item1 == payType);
+            if (opl == null)
+            {
+                DataProvider.SaveErrorToSQL(null, $"Тип оплати payType = {payType} не знайдено");
+                return null;
+            }
+            switch (opl.Item1)
+            {
+                case 0:  /*Готівка*/
+                    request.Check.CHECKPAY = new List<CPayRow>() { new CPayRow() {
+                        PAYFORMCD = opl.Item1,
+                        PAYFORMNM = opl.Item2,
+                        SUM = sumNakl - rounding - discount,
+                        PROVIDED = sum,
+                        REMAINS = sum - sumNakl + rounding + discount
+                    } };
+                    if (sumNakl - rounding - discount == 0)
+                    {
+                        request.Check.CHECKPAY = null;
+                    }
+                    break;
+                case 1:  /*Банківська картка*/
+                    if (sumNakl - discount != sum)
+                    {
+                        DataProvider.SaveErrorToSQL(null, $"Увага! Оплата картою не співпадає з накладною. Накладна - {coden}");
+                        return null;
+                    }
+                    request.Check.CHECKPAY = new List<CPayRow>() { new CPayRow() {
+                        PAYFORMCD = opl.Item1,
+                        PAYFORMNM = opl.Item2,
+                        SUM = sum,
+                        PROVIDED = sum,
+                        PAYSYS = new List<CPaySysRow>() { new CPaySysRow() {
+                            NAME = IssuerName,
+                            ACQUIRENM = AcquireName,
+                            ACQUIRETRANSID = RRN,
+                            POSTRANSDATE = TransactionDate.ToString("ddMMyyyyHHmmss"),
+                            DEVICEID = TerminalID,
+                            EPZDETAILS = PAN,
+                            AUTHCD = ApprovalCode,
+                            SUM = sum
+                        } }
+                    } };
+                    if (sum == 0)
+                    {
+                        request.Check.CHECKPAY = null;
+                    }
+                    //NAME = "VISA", /*IssuerName*/ /*Платіжна система*/
+                    //ACQUIRENM = "Приватбанк", /*AcquireName*/ /*Еквайр*/
+                    //ACQUIRETRANSID = "086577310200", /*RRN*/
+                    //POSTRANSDATE = DateTime.Now.ToString("ddMMyyyyHHmmss"), /*TransactionDate*/
+                    //DEVICEID = "X1111RJ2", /*TerminalID*/ /*Термінал*/
+                    //EPZDETAILS = "4149 43 ** 8717", /*PAN*/ /*ЕПЗ*/
+                    //AUTHCD = "923557", /*ApprovalCode*/ /*Код авторизації*/
+                    //SUM = 100, /*SumPayByCard*/ /*СУМА*/
+                    break;
+                default:
+                    DataProvider.SaveErrorToSQL(null, "Тип оплати окрім готівки і карти не реалізовано");
+                    return null;
+            }
+
+            var json = JsonConvert.SerializeObject(request, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
+            var result = RequestData.SendPost(baseUrl, json, out string error);
+            DataProvider.SaveErrorToSQL(null, error);
+            result = result.Replace("0001-01-01T00:00:00", "2000-01-01T00:00:00+00:00");
+            var resultObj = result.Deserialize<RegisterCheckResult>(out error);
+            if (resultObj != null)
+                resultObj.Sum = sumNakl;
+            DataProvider.SaveErrorToSQL(null, error);
+            DataProvider.SaveErrorToSQL(null, resultObj);
+            return resultObj;
+        }
+
+        public static void RegisterCheckXml(byte[] cert, byte[] key, string password, long numFiscal, Guid nakladnaGuid, decimal sum, int payType, decimal rounding, decimal discount, int isPDV, string comment, string IssuerName, string AcquireName, string RRN, DateTime TransactionDate, string TerminalID, string PAN, string ApprovalCode, out string result)
+        {
+            result = RegisterCheck(cert, key, password, numFiscal, nakladnaGuid, sum, payType, rounding, discount, isPDV, comment, IssuerName, AcquireName, RRN, TransactionDate, TerminalID, PAN, ApprovalCode).ToXml<RegisterCheckResult>();
+        }
+
+        public static string RegisterCheckTest(byte[] cert, byte[] key, string password, long numFiscal, Guid nakladnaGuid, decimal sum, int payType, decimal rounding, int isPDV, string comment, string IssuerName, string AcquireName, string RRN, DateTime TransactionDate, string TerminalID, string PAN, string ApprovalCode)
         {
             //var request = new RegisterCheck()
             //{
@@ -342,91 +556,321 @@ namespace CashalotPRRO
 
             request.Check = new CheckContent()
             {
-                CHECKHEAD = new CHead() 
-                { 
-                    DOCTYPE = CheckDocumentType.SaleGoods
+                CHECKHEAD = new CHead()
+                {
+                    DOCTYPE = CheckDocumentType.SaleGoods,
+                    DOCSUBTYPE = CheckDocumentSubType.CheckGoods,
+                    COMMENT = comment
                 },
-
-                //new List<CPayRow>() 
-                //{
-                //    new CPayRow()
-                //    {
-                //        PAYFORMCD = 1,  /*0*/  /*201*/
-                //        PAYFORMNM = "КАРТКА",  /*"ГОТІВКА"*/  /*"ПІСЛЯПЛАТА"*/
-                //        PAYSYS = new List<CPaySysRow>()
-                //        {
-                //            new CPaySysRow()
-                //            {
-                //                NAME = "VISA", /*IssuerName*/ /*Платіжна система*/
-                //                ACQUIRENM = "Приватбанк", /*AcquireName*/ /*Еквайр*/
-                //                ACQUIRETRANSID = "086577310200", /*RRN*/
-                //                POSTRANSDATE = DateTime.Now.ToString("ddMMyyyyHHmmss"), /*TransactionDate*/
-                //                DEVICEID = "X1111RJ2", /*TerminalID*/ /*Термінал*/
-                //                EPZDETAILS = "4149 43 ** 8717", /*PAN*/ /*ЕПЗ*/
-                //                AUTHCD = "923557", /*ApprovalCode*/ /*Код авторизації*/
-                //                SUM = 100, /*SumPayByCard*/ /*СУМА*/
-                //            }
-                //        }
-                //    }
-                //},
                 CHECKPTKS = null,
             };
-            switch (checkSubType)
+            request.Check.CHECKBODY = DataProvider.GetDataForCheck(nakladnaGuid, isPDV, out int coden);
+            var sumNakl = request.Check.CHECKBODY.Sum(ch => ch.COST);
+            if (sumNakl - rounding > sum)
             {
-                case 0:
-                    request.Check.CHECKHEAD.DOCSUBTYPE = CheckDocumentSubType.CheckGoods;
-                    break;
-                case 1:
-                    request.Check.CHECKHEAD.DOCSUBTYPE = CheckDocumentSubType.CheckReturn;
-                    break;
-                default:
-                    DataProvider.SaveErrorToSQL(null, "Тип чеку окрім оплати і повернення не реалізовано");
-                    return null;
+                DataProvider.SaveErrorToSQL(null, $"Увага! Сума накладнлої більша за суму оплати. Накладна - {coden}");
+                return null;
             }
-
-            request.Check.CHECKBODY = DataProvider.GetDataForCheck(nakladnaGuid); 
-            var sum = request.Check.CHECKBODY.Sum(ch => ch.COST);
-            request.Check.CHECKTOTAL = new CTotal() { SUM = sum };
+            request.Check.CHECKTOTAL = new CTotal()
+            {
+                SUM = sumNakl - rounding,
+                RNDSUM = rounding,
+                NORNDSUM = sumNakl
+            };
 
             request.Check.CHECKTAX = new List<CTaxRow>() { new CTaxRow() {
-                TYPE = 6,
-                NAME = "Неоподатк.",
+                TYPE = 0,
+                NAME = "ПДВ",
                 LETTER = "Н",
                 PRC = 0,
-                TURNOVER = sum,
-                SOURCESUM = sum,
+                TURNOVER = sumNakl,
+                SOURCESUM = sumNakl,
                 SUM = 0
             } };
 
             var opl = DataProvider.PayType.FirstOrDefault(o => o.Item1 == payType);
-#warning оплата не та або картка - це доробити
-            if (opl == null || opl.Item1 == 1)
+            if (opl == null)
             {
-                DataProvider.SaveErrorToSQL(null, "Тип оплати не знайдено або це картка(не реалізовано)");
+                DataProvider.SaveErrorToSQL(null, $"Тип оплати payType = {payType} не знайдено");
                 return null;
             }
-            request.Check.CHECKPAY = new List<CPayRow>() { new CPayRow() {
-                PAYFORMCD = opl.Item1,
-                PAYFORMNM = opl.Item2,
-                SUM = sum,
-                PROVIDED = sum,
-                REMAINS = 0
-            } };
+            switch (opl.Item1)
+            {
+                case 0:  /*Готівка*/
+                    request.Check.CHECKPAY = new List<CPayRow>() { new CPayRow() {
+                        PAYFORMCD = opl.Item1,
+                        PAYFORMNM = opl.Item2,
+                        SUM = sumNakl - rounding,
+                        PROVIDED = sum,
+                        REMAINS = sum - sumNakl + rounding
+                    } };
+                    break;
+                case 1:  /*Банківська картка*/
+                    if (sumNakl != sum)
+                    {
+                        DataProvider.SaveErrorToSQL(null, $"Увага! Оплата картою не співпадає з накладною. Накладна - {coden}");
+                        return null;
+                    }
+                    request.Check.CHECKPAY = new List<CPayRow>() { new CPayRow() {
+                        PAYFORMCD = opl.Item1,
+                        PAYFORMNM = opl.Item2,
+                        SUM = sumNakl,
+                        PROVIDED = sumNakl,
+                        PAYSYS = new List<CPaySysRow>() { new CPaySysRow() {
+                            NAME = IssuerName,
+                            ACQUIRENM = AcquireName,
+                            ACQUIRETRANSID = RRN,
+                            POSTRANSDATE = TransactionDate.ToString("ddMMyyyyHHmmss"),
+                            DEVICEID = TerminalID,
+                            EPZDETAILS = PAN,
+                            AUTHCD = ApprovalCode,
+                            SUM = sumNakl
+                        } }
+                    } };
+                    //NAME = "VISA", /*IssuerName*/ /*Платіжна система*/
+                    //ACQUIRENM = "Приватбанк", /*AcquireName*/ /*Еквайр*/
+                    //ACQUIRETRANSID = "086577310200", /*RRN*/
+                    //POSTRANSDATE = DateTime.Now.ToString("ddMMyyyyHHmmss"), /*TransactionDate*/
+                    //DEVICEID = "X1111RJ2", /*TerminalID*/ /*Термінал*/
+                    //EPZDETAILS = "4149 43 ** 8717", /*PAN*/ /*ЕПЗ*/
+                    //AUTHCD = "923557", /*ApprovalCode*/ /*Код авторизації*/
+                    //SUM = 100, /*SumPayByCard*/ /*СУМА*/
+                    break;
+                default:
+                    DataProvider.SaveErrorToSQL(null, "Тип оплати окрім готівки і карти не реалізовано");
+                    return null;
+            }
 
+            var json = JsonConvert.SerializeObject(request, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
+            return json;
+        }
+
+        public static void RegisterCheckTestXml(byte[] cert, byte[] key, string password, long numFiscal, Guid nakladnaGuid, decimal sum, int payType, decimal rounding, int isPDV, string comment, string IssuerName, string AcquireName, string RRN, DateTime TransactionDate, string TerminalID, string PAN, string ApprovalCode, out string result)
+        {
+            result = RegisterCheckTest(cert, key, password, numFiscal, nakladnaGuid, sum, payType, rounding, isPDV, comment, IssuerName, AcquireName, RRN, TransactionDate, TerminalID, PAN, ApprovalCode);
+        }
+
+        public static RegisterCheckResult ReturnCheck(byte[] cert, byte[] key, string password, long numFiscal, Guid nakladnaGuid, decimal sum, int payType, decimal rounding, int isPDV, string comment, string IssuerName, string AcquireName, string RRN, DateTime TransactionDate, string TerminalID, string PAN, string ApprovalCode, string orderRetNum, long OrderRetCachRegNum, string orderRetDate)
+        {
+            //var request = new RegisterCheck()
+            //{
+            //    UID = Guid.NewGuid(),
+            //    Certificate = _cert,
+            //    PrivateKey = _key,
+            //    Password = _password,
+            //    NumFiscal = numFiscal
+            //};
+            var request = new RegisterCheck()
+            {
+                UID = Guid.NewGuid(),
+                Certificate = Convert.ToBase64String(cert),
+                PrivateKey = Convert.ToBase64String(key),
+                Password = password,
+                NumFiscal = numFiscal
+            };
+            request.Check = new CheckContent()
+            {
+                CHECKHEAD = new CHead()
+                {
+                    DOCTYPE = CheckDocumentType.SaleGoods,
+                    DOCSUBTYPE = CheckDocumentSubType.CheckReturn,
+                    ORDERRETNUM = orderRetNum,
+                    COMMENT = comment
+                },
+                CHECKPTKS = null,
+            };
+            //Повернення з іншого ФН:
+            if (OrderRetCachRegNum != 0 && numFiscal != OrderRetCachRegNum)
+            {
+                request.Check.CHECKHEAD.ORDERRETCASHREGNUM = OrderRetCachRegNum.ToString();
+                request.Check.CHECKHEAD.ORDERRETDATE = orderRetDate;
+            }
+            else
+            {
+                request.Check.CHECKHEAD.ORDERRETCASHREGNUM = null;
+                request.Check.CHECKHEAD.ORDERRETDATE = null;
+            }
+            request.Check.CHECKBODY = DataProvider.GetDataForCheck(nakladnaGuid, isPDV, out int coden);
+            var sumNakl = request.Check.CHECKBODY.Sum(ch => ch.COST);
+            //Округлення:
+            var roundingOrig = rounding;
+            if (payType == 0) //готівка
+            {
+                if (sumNakl - Math.Round(sumNakl, 1, MidpointRounding.AwayFromZero) != 0)
+                    rounding = sumNakl - Math.Round(sumNakl, 1, MidpointRounding.AwayFromZero);
+                else
+                    rounding = 0;
+            }
+            else //не готівка
+                rounding = 0;
+            if (roundingOrig != rounding)
+                DataProvider.SaveErrorToSQL(null, $"Увага! Округлення в накладній не вірне. Моє округлення = {rounding}. Накладна - {coden}");
+
+            request.Check.CHECKTOTAL = new CTotal()
+            {
+                SUM = sumNakl - rounding,
+                RNDSUM = rounding,
+                NORNDSUM = sumNakl
+            };
+            if (isPDV == 0)
+                request.Check.CHECKTAX = new List<CTaxRow>() { new CTaxRow() {
+                    TYPE = 0,
+                    NAME = "ПДВ",
+                    LETTER = "Н",
+                    PRC = 0,
+                    TURNOVER = sumNakl,
+                    SOURCESUM = sumNakl,
+                    SUM = 0
+                } };
+            else
+                request.Check.CHECKTAX = new List<CTaxRow>() { new CTaxRow() {
+                    TYPE = 0,
+                    NAME = "ПДВ",
+                    LETTER = "А",
+                    PRC = 20,
+                    TURNOVER = sumNakl,
+                    SOURCESUM = sumNakl,
+                    SUM = Math.Round(sumNakl * 20 / 120, 2, MidpointRounding.AwayFromZero)
+                } };
+            var opl = DataProvider.PayType.FirstOrDefault(o => o.Item1 == payType);
+            if (opl == null)
+            {
+                DataProvider.SaveErrorToSQL(null, $"Тип оплати payType = {payType} не знайдено");
+                return null;
+            }
+            switch (opl.Item1)
+            {
+                case 0:  /*Готівка*/
+                    request.Check.CHECKPAY = new List<CPayRow>() { new CPayRow() {
+                        PAYFORMCD = opl.Item1,
+                        PAYFORMNM = opl.Item2,
+                        SUM = sumNakl - rounding,
+                        PROVIDED = sum,
+                        REMAINS = sum - sumNakl + rounding
+                    } };
+                    break;
+                case 1:  /*Банківська картка*/
+                    if (sumNakl != sum)
+                    {
+                        DataProvider.SaveErrorToSQL(null, $"Увага! Оплата картою не співпадає з накладною. Накладна - {coden}");
+                        return null;
+                    }
+                    request.Check.CHECKPAY = new List<CPayRow>() { new CPayRow() {
+                        PAYFORMCD = opl.Item1,
+                        PAYFORMNM = opl.Item2,
+                        SUM = sumNakl,
+                        PROVIDED = sumNakl,
+                        PAYSYS = new List<CPaySysRow>() { new CPaySysRow() {
+                            NAME = IssuerName,
+                            ACQUIRENM = AcquireName,
+                            ACQUIRETRANSID = RRN,
+                            POSTRANSDATE = TransactionDate.ToString("ddMMyyyyHHmmss"),
+                            DEVICEID = TerminalID,
+                            EPZDETAILS = PAN,
+                            AUTHCD = ApprovalCode,
+                            SUM = sumNakl
+                        } }
+                    } };
+                    //NAME = "VISA", /*IssuerName*/ /*Платіжна система*/
+                    //ACQUIRENM = "Приватбанк", /*AcquireName*/ /*Еквайр*/
+                    //ACQUIRETRANSID = "086577310200", /*RRN*/
+                    //POSTRANSDATE = DateTime.Now.ToString("ddMMyyyyHHmmss"), /*TransactionDate*/
+                    //DEVICEID = "X1111RJ2", /*TerminalID*/ /*Термінал*/
+                    //EPZDETAILS = "4149 43 ** 8717", /*PAN*/ /*ЕПЗ*/
+                    //AUTHCD = "923557", /*ApprovalCode*/ /*Код авторизації*/
+                    //SUM = 100, /*SumPayByCard*/ /*СУМА*/
+                    break;
+                default:
+                    DataProvider.SaveErrorToSQL(null, "Тип оплати окрім готівки і карти не реалізовано");
+                    return null;
+            }
             var json = JsonConvert.SerializeObject(request, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
             var result = RequestData.SendPost(baseUrl, json, out string error);
             DataProvider.SaveErrorToSQL(null, error);
+            result = result.Replace("0001-01-01T00:00:00", "2000-01-01T00:00:00+00:00");
             var resultObj = result.Deserialize<RegisterCheckResult>(out error);
+            if (resultObj != null)
+                resultObj.Sum = sumNakl;
             DataProvider.SaveErrorToSQL(null, error);
             DataProvider.SaveErrorToSQL(null, resultObj);
             return resultObj;
         }
 
-        public static void RegisterCheckXml(byte[] cert, byte[] key, string password, long numFiscal, int checkSubType, Guid id, int typeOpl, out string result)
+        public static void ReturnCheckXml(byte[] cert, byte[] key, string password, long numFiscal, Guid nakladnaGuid, decimal sum, int payType, decimal rounding, int isPDV, string comment, string IssuerName, string AcquireName, string RRN, DateTime TransactionDate, string TerminalID, string PAN, string ApprovalCode, string orderRetNum, long OrderRetCachRegNum, string orderRetDate, out string result)
         {
-            result = RegisterCheck(cert, key, password, numFiscal, checkSubType, id, typeOpl).ToXml<RegisterCheckResult>();
+            result = ReturnCheck(cert, key, password, numFiscal, nakladnaGuid, sum, payType, rounding, isPDV, comment, IssuerName, AcquireName, RRN, TransactionDate, TerminalID, PAN, ApprovalCode, orderRetNum, OrderRetCachRegNum, orderRetDate).ToXml<RegisterCheckResult>();
         }
 
+        public static RegisterCheckResult CashKasa(byte[] cert, byte[] key, string password, long numFiscal, decimal sum)
+        {
+            if (sum == 0)
+                return null;
+
+            //var request = new RegisterCheck()
+            //{
+            //    UID = Guid.NewGuid(),
+            //    Certificate = _cert,
+            //    PrivateKey = _key,
+            //    Password = _password,
+            //    NumFiscal = numFiscal
+            //};
+
+            var request = new RegisterCheck()
+            {
+                UID = Guid.NewGuid(),
+                Certificate = Convert.ToBase64String(cert),
+                PrivateKey = Convert.ToBase64String(key),
+                Password = password,
+                NumFiscal = numFiscal
+            };
+
+            request.Check = new CheckContent()
+            {
+                CHECKHEAD = new CHead()
+                {
+                    DOCTYPE = CheckDocumentType.SaleGoods,
+                    DOCSUBTYPE = CheckDocumentSubType.ServiceDeposit
+                },
+                CHECKPTKS = null,
+                CHECKBODY = null,
+                CHECKTAX = null,
+                CHECKPAY = null
+            };
+            if (sum > 0)
+                request.Check.CHECKHEAD.DOCSUBTYPE = CheckDocumentSubType.ServiceDeposit;
+            else
+            {
+                request.Check.CHECKHEAD.DOCSUBTYPE = CheckDocumentSubType.ServiceIssue;
+                sum = -sum;
+            }
+            request.Check.CHECKTOTAL = new CTotal() { SUM = sum };
+
+            var json = JsonConvert.SerializeObject(request, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
+            var result = RequestData.SendPost(baseUrl, json, out string error);
+            DataProvider.SaveErrorToSQL(null, error);
+            result = result.Replace("0001-01-01T00:00:00", "2000-01-01T00:00:00+00:00");
+            var resultObj = result.Deserialize<RegisterCheckResult>(out error);
+            DataProvider.SaveErrorToSQL(null, error);
+            DataProvider.SaveErrorToSQL(null, resultObj);
+#region Отримання результатів як помилка, якщо треба:
+            //DataProvider.SaveErrorToSQL(null, result);
+            //DataProvider.SaveErrorToSQL(null, resultObj);
+#endregion
+            return resultObj;
+        }
+
+        public static void CashKasaXml(byte[] cert, byte[] key, string password, long numFiscal, decimal sum, out string result)
+        {
+            result = CashKasa(cert, key, password, numFiscal, sum).ToXml<RegisterCheckResult>();
+        }
+
+        public static void SaveInfo(byte[] cert, byte[] key, string password, long numFiscal)
+        {
+            var objects = Objects(cert, key, password);
+            var state = TransactionsRegistrarState(cert, key, password, numFiscal);
+            DataProvider.SaveInfoSQL(numFiscal, objects, state);
+            SetupRegistrar(numFiscal);
+        }
 
     }
 }

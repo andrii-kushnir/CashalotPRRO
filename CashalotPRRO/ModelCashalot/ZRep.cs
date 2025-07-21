@@ -157,7 +157,7 @@ namespace CashalotPRRO.Model
         public int TOTALCURRENCYCOST { get; set; }
         public decimal TOTALCURRENCYSUM { get; set; }
         public decimal TOTALCURRENCYCOMMISSION { get; set; }
-        public ZPayFormsRow[] PAYFORMS { get; set; }
-        public ZTaxRow[] TAXES { get; set; }
+        public List<ZPayFormsRow> PAYFORMS { get; set; }
+        public List<ZTaxRow> TAXES { get; set; }
     }
 }

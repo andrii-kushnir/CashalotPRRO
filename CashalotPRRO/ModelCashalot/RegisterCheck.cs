@@ -33,20 +33,42 @@ namespace CashalotPRRO.Model
         public string ORDERNUM { get; set; }
         public string CASHDESKNUM { get; set; }
         public string CASHREGISTERNUM { get; set; }
+        public string ORDERRETCASHREGNUM { get; set; }
+        public string ORDERRETDATE { get; set; }
         public string ORDERRETNUM { get; set; }
         public string ORDERSTORNUM { get; set; }
         public string OPERTYPENM { get; set; }
         public string VEHICLERN { get; set; }
         public bool REVOKELASTONLINEDOC { get; set; }
+        public bool ShouldSerializeREVOKELASTONLINEDOC()
+        {
+            return false;
+        }
         public string CASHIER { get; set; }
         public string LOGOURL { get; set; }
         public string COMMENT { get; set; }
         public string VER { get; set; }
         public string ORDERTAXNUM { get; set; }
         public bool REVOKED { get; set; }
+        public bool ShouldSerializeREVOKED()
+        {
+            return false;
+        }
         public bool STORNED { get; set; }
+        public bool ShouldSerializeSTORNED()
+        {
+            return false;
+        }
         public bool TESTING { get; set; }
+        public bool ShouldSerializeTESTING()
+        {
+            return false;
+        }
         public bool OFFLINE { get; set; }
+        public bool ShouldSerializeOFFLINE()
+        {
+            return false;
+        }
         public string PREVDOCHASH { get; set; }
     }
     public class CExciseLabelsRow
@@ -86,7 +108,15 @@ namespace CashalotPRRO.Model
         public string FUELCOLUMNNUM { get; set; }
         public string FUELFAUCETNUM { get; set; }
         public bool FUELSALESIGN { get; set; }
+        public bool ShouldSerializeFUELSALESIGN()
+        {
+            return false;
+        }
         public int VALCD { get; set; }
+        public bool ShouldSerializeVALCD()
+        {
+            return VALCD != 0;
+        }
         public string VALSYMCD { get; set; }
         public string VALNM { get; set; }
         public int? VALOPERTYPE { get; set; }
@@ -94,21 +124,69 @@ namespace CashalotPRRO.Model
         public string VALOUTSYMCD { get; set; }
         public string VALOUTNM { get; set; }
         public decimal VALCOURSE { get; set; }
+        public bool ShouldSerializeVALCOURSE()
+        {
+            return VALCOURSE != 0;
+        }
         public string VALCOURSEDATE { get; set; }
         public decimal VALFOREIGNSUM { get; set; }
+        public bool ShouldSerializeVALFOREIGNSUM()
+        {
+            return VALFOREIGNSUM != 0;
+        }
         public decimal VALNATIONALSUM { get; set; }
+        public bool ShouldSerializeVALNATIONALSUM()
+        {
+            return VALNATIONALSUM != 0;
+        }
         public decimal VALCOMMISSION { get; set; }
+        public bool ShouldSerializeVALCOMMISSION()
+        {
+            return VALCOMMISSION != 0;
+        }
         public int VALOPERCNT { get; set; }
+        public bool ShouldSerializeVALOPERCNT()
+        {
+            return VALOPERCNT != 0;
+        }
         public bool VALREFUSESELL { get; set; }
+        public bool ShouldSerializeVALREFUSESELL()
+        {
+            return false;
+        }
         public bool PWNDIR { get; set; }
+        public bool ShouldSerializePWNDIR()
+        {
+            return false;
+        }
         public int? USAGETYPE { get; set; }
         public int? DISCOUNTTYPE { get; set; }
+        public bool ShouldSerializeDISCOUNTTYPE()
+        {
+            return DISCOUNTTYPE != null && DISCOUNTSUM != 0;
+        }
         public decimal SUBTOTAL { get; set; }
+        public bool ShouldSerializeSUBTOTAL()
+        {
+            return SUBTOTAL != 0;
+        }
         public int? DISCOUNTNUM { get; set; }
         public string DISCOUNTTAX { get; set; }
         public decimal DISCOUNTPERCENT { get; set; }
+        public bool ShouldSerializeDISCOUNTPERCENT()
+        {
+            return DISCOUNTPERCENT != 0;
+        }
         public decimal DISCOUNTSUM { get; set; }
+        public bool ShouldSerializeDISCOUNTSUM()
+        {
+            return DISCOUNTSUM != 0;
+        }
         public decimal PARTPAYSUM { get; set; }
+        public bool ShouldSerializePARTPAYSUM()
+        {
+            return PARTPAYSUM != 0;
+        }
         public string COMMENT { get; set; }
         public List<CExciseLabelsRow> EXCISELABELS { get; set; }
     }
@@ -140,8 +218,16 @@ namespace CashalotPRRO.Model
         public string LETTER { get; set; }
         public decimal PRC { get; set; }
         public bool SIGN { get; set; }
+        public bool ShouldSerializeSIGN()
+        {
+            return false;
+        }
         public decimal TURNOVER { get; set; }
         public decimal TURNOVERDISCOUNT { get; set; }
+        public bool ShouldSerializeTURNOVERDISCOUNT()
+        {
+            return TURNOVERDISCOUNT != 0;
+        }
         public decimal SOURCESUM { get; set; }
         public decimal SUM { get; set; }
     }
@@ -164,28 +250,78 @@ namespace CashalotPRRO.Model
     {
         public int PAYFORMCD { get; set; }
         public string PAYFORMNM { get; set; }
+        //Сума оплати(15.2 цифри)
         public decimal SUM { get; set; }
+        //Сума внесених коштів(15.2 цифри)
         public decimal PROVIDED { get; set; }
+        //Решта(не зазначається, якщо решта відсутня) (15.2 цифри)
         public decimal REMAINS { get; set; }
         public List<CPaySysRow> PAYSYS { get; set; }
     }
     public class CTotal
     {
+        //Сума оплати(15.2 цифри)
         public decimal SUM { get; set; }
         public decimal PWNSUMISSUED { get; set; }
+        public bool ShouldSerializePWNSUMISSUED()
+        {
+            return PWNSUMISSUED != 0;
+        }
         public decimal PWNSUMRECEIVED { get; set; }
+        public bool ShouldSerializePWNSUMRECEIVED()
+        {
+            return PWNSUMRECEIVED != 0;
+        }
+        //Сума округлення(15.2 цифри)
         public decimal RNDSUM { get; set; }
+        public bool ShouldSerializeRNDSUM()
+        {
+            return RNDSUM != 0;
+        }
+        //Сума оплати без округлення(15.2 цифри)
         public decimal NORNDSUM { get; set; }
+        public bool ShouldSerializeNORNDSUM()
+        {
+            return NORNDSUM != 0;
+        }
         public decimal NOTAXSUM { get; set; }
+        public bool ShouldSerializeNOTAXSUM()
+        {
+            return NOTAXSUM != 0;
+        }
         public decimal COMMISSION { get; set; }
+        public bool ShouldSerializeCOMMISSION()
+        {
+            return COMMISSION != 0;
+        }
         public int? USAGETYPE { get; set; }
         public decimal SUBCHECK { get; set; }
+        public bool ShouldSerializeSUBCHECK()
+        {
+            return SUBCHECK != 0;
+        }
         public int? DISCOUNTTYPE { get; set; }
         public decimal DISCOUNTPERCENT { get; set; }
+        public bool ShouldSerializeDISCOUNTPERCENT()
+        {
+            return DISCOUNTPERCENT != 0;
+        }
         public decimal DISCOUNTSUM { get; set; }
+        public bool ShouldSerializeDISCOUNTSUM()
+        {
+            return DISCOUNTSUM != 0;
+        }
         public PartialPaymentType? PARTPAYTYPE { get; set; }
         public decimal PARTPAYPERCENT { get; set; }
+        public bool ShouldSerializePARTPAYPERCENT()
+        {
+            return PARTPAYPERCENT != 0;
+        }
         public decimal PARTPAYSUM { get; set; }
+        public bool ShouldSerializePARTPAYSUM()
+        {
+            return PARTPAYSUM != 0;
+        }
         public string PARTPAYORDPREPAYNUM { get; set; }
     }
 }

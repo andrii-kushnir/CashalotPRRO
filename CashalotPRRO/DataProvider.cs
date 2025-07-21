@@ -13,7 +13,7 @@ namespace CashalotPRRO
     public static class DataProvider
     {
 #warning змінити в релізній версії!!!
-        //private const string connectionSql100 = "Context Connection = true;";
+        private const string connectionSql100In = "Context Connection = true;";
         private const string connectionSql100 = @"Server=192.168.4.100; Database=InetClient; uid=КушнірА; pwd=зщшфтв;";
 
         public static List<Tuple<int, string>> PayType = new List<Tuple<int, string>>();
@@ -29,7 +29,7 @@ namespace CashalotPRRO
                 using (SqlConnection connectionNew = new SqlConnection(connectionSql100))
                 {
                     connectionNew.Open();
-                    var sql = $@"INSERT INTO [InetClient].[dbo].[CashalotPRROErrorLog] (method, error) VALUES ('{methodName}', '{error.Ekran()}')";
+                    var sql = $@"INSERT INTO [InetClient].[dbo].[CashalotPRROErrorLog] (method, error) VALUES ('{methodName}', '{error.Ekran().Substring(0, Math.Min(2000, error.Ekran().Length))}')";
                     using (var query = new SqlCommand(sql, connectionNew))
                         query.ExecuteNonQuery();
                     connectionNew.Close();
@@ -60,9 +60,24 @@ namespace CashalotPRRO
             }
         }
 
-        public static List<CBodyRow> GetDataForCheck(Guid nakladnaGuid)
+        public static void SaveInfoSQL(long numFiscal, ObjectsResult objects, TransactionsRegistrarStateResult transactions)
+        {
+            var prro = objects.TaxObjects.FirstOrDefault(o => o.TransactionsRegistrars.Any(t => t.NumFiscal == numFiscal));
+            var ipn = prro.Ipn == null ? "NULL" : $"'{prro.Ipn}'";
+            using (var connection = new SqlConnection(connectionSql100In))
+            {
+                connection.Open();
+                var sql = $"IF EXISTS(SELECT * FROM [InetClient].[dbo].[CashalotPRROUsers] WHERE NumFiscal = {numFiscal}) UPDATE [InetClient].[dbo].[CashalotPRROUsers] SET NumFiscal = {numFiscal}, OrgName = '{prro.OrgName}', Name = '{prro.Name}', Address = '{prro.Address}', Tin = '{prro.Tin}', KasaName = '{transactions.Name}', Ipn = {ipn} WHERE NumFiscal = {numFiscal} ELSE INSERT INTO [InetClient].[dbo].[CashalotPRROUsers] (NumFiscal, OrgName, Name, Address, Tin, KasaName, Ipn) values ({numFiscal}, '{prro.OrgName}', '{prro.Name}', '{prro.Address}', '{prro.Tin}', '{transactions.Name}', {ipn})";
+                using (var query = new SqlCommand(sql, connection))
+                    query.ExecuteNonQuery();
+                connection.Close();
+            }
+        }
+
+        public static List<CBodyRow> GetDataForCheck(Guid nakladnaGuid, int isPDV, out int coden)
         {
             var result = new List<CBodyRow>();
+            coden = 0;
 
             using (var connection = new SqlConnection(connectionSql100))
             {
@@ -76,6 +91,7 @@ namespace CashalotPRRO
                     reader = command.ExecuteReader();
                     while (reader.Read())
                     {
+                        coden = Convert.ToInt32(reader["coden"]);
                         if (reader["ovid"] == System.DBNull.Value || reader["ovCashalot"] == System.DBNull.Value)
                             isErrorOv = true;
                         var bodyRow = new CBodyRow()
@@ -87,9 +103,9 @@ namespace CashalotPRRO
                             BARCODE = Convert.ToString(reader["barcode"]),
                             AMOUNT = Convert.ToDecimal(reader["kol"], CultureInfo.InvariantCulture),
                             PRICE = Convert.ToDecimal(reader["cena_r"], CultureInfo.InvariantCulture),
-                            LETTERS = "Н"
+                            LETTERS = isPDV == 1 ? "А" : "Н"
                         };
-                        bodyRow.COST = bodyRow.AMOUNT * bodyRow.PRICE;
+                        bodyRow.COST = Math.Round(bodyRow.AMOUNT * bodyRow.PRICE, 2, MidpointRounding.AwayFromZero);
                         result.Add(bodyRow);
                     }
                     reader.NextResult();
@@ -115,6 +131,22 @@ namespace CashalotPRRO
             return result;
         }
 
-
+        public static void UpdateCheckDiscount(Guid nakladnaGuid, List<CBodyRow> listTovar)
+        {
+            using (var connection = new SqlConnection(connectionSql100))
+            {
+                connection.Open();
+                string sql = "";
+                foreach (var tovar in listTovar)
+                {
+                    if (tovar.DISCOUNTSUM == 0)
+                        continue;
+                    sql = $"UPDATE [InetClient].[dbo].[CashalotNRozhD] SET discount = {tovar.DISCOUNTSUM} WHERE id = '{nakladnaGuid}' AND codetv = {tovar.CODE}";
+                    using (var query = new SqlCommand(sql, connection))
+                        query.ExecuteNonQuery();
+                }
+                connection.Close();
+            }
+        }
     }
 }

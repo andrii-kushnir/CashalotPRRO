@@ -15,5 +15,18 @@ namespace CashalotPRRO.ModelMethods
     public class LastShiftTotalsResult : ErrorBase
     {
         public ZRepContent Totals { get; set; }
+        public DateTimeOffset ShiftOpened { get; set; }
+    }
+
+    public class LastShiftForDruk
+    {
+        public LastShiftTotalsResult lastShiftTotalsResult { get; set; }
+        public Taxobject taxobject { get; set; }
+        public long NumFiscal { get; set; }
+    }
+
+    public class XRepResult : ErrorBase
+    {
+        public decimal Sum { get; set; }
     }
 }
